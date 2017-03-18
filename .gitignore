@@ -94,3 +94,7 @@ ENV/
 .ropeproject
 
 # End of https://www.gitignore.io/api/python
+
+# Excludes data we used
+
+**/data/
