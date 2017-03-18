@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn import linear_model
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import r2_score, mean_squared_error
 
 
@@ -44,6 +44,23 @@ def main(rs=108):
     print("Best lambda value: {}".format(best_lambda_lasso))
     print()
 
+def get_best_lambda(estimator, X, y):
+    lambda_candidate = [2 ** k for k in range(0, 30)]
+
+    default_estimator = estimator(alpha=0)
+
+    best_lambda = 0
+    best_score = cross_val_score(default_estimator, X, y=y, cv=10).mean()
+
+    for l in lambda_candidate:
+        regr = estimator(alpha=l)
+        scores = cross_val_score(regr, X, y=y, cv=10)
+        score = scores.mean()
+        if best_score < score:
+            best_score = score
+            best_lambda = l
+
+    return best_lambda, best_score
 
 def get_best_lambda_value_ridge_lasso(data):
     """
@@ -53,8 +70,12 @@ def get_best_lambda_value_ridge_lasso(data):
     Do not write exact value on best_lambda_ridge and best_lambda_lasso.
     You should implement the function to find the best lambda value.
     """
-    best_lambda_ridge = 0   # You should find the best lambda value via cross validation
-    best_lambda_lasso = 0   # You should find the best lambda value via cross validation
+    x_mat = data.ix[:, 1:-1].as_matrix()
+    x_mat = x_mat.reshape(-1, x_mat.shape[1])
+    y_vec = data.ix[:, -1].as_matrix().reshape(-1, 1)
+
+    best_lambda_ridge, best_score_ridge = get_best_lambda(linear_model.Ridge, x_mat, y_vec)
+    best_lambda_lasso, best_score_lasso = get_best_lambda(linear_model.Lasso, x_mat, y_vec)
 
     return best_lambda_ridge, best_lambda_lasso
 
@@ -71,23 +92,25 @@ def multi_var_hitter(x_train, x_test, y_train, y_test, x_label):
 
 
 def multi_var_hitter_ridge(x_train, x_test, y_train, y_test, x_label, best_lambda):
-    """
-    Implement Here
-    """
-    rss = 0
-    r2 = 0
-    mse = 0
+    regr = linear_model.Ridge(alpha=best_lambda)
+
+    regr.fit(x_train, y_train)
+    predicted_y_test = regr.predict(x_test)
+    rss = np.sum((predicted_y_test - y_test) ** 2)
+    r2 = r2_score(y_test, predicted_y_test)
+    mse = mean_squared_error(y_test, predicted_y_test)
 
     return rss, r2, mse
 
 
 def multi_var_hitter_lasso(x_train, x_test, y_train, y_test, x_label, best_lambda):
-    """
-    Implement Here
-    """
-    rss = 0
-    r2 = 0
-    mse = 0
+    regr = linear_model.Lasso(alpha=best_lambda)
+
+    regr.fit(x_train, y_train)
+    predicted_y_test = regr.predict(x_test)
+    rss = np.sum((predicted_y_test - y_test) ** 2)
+    r2 = r2_score(y_test, predicted_y_test)
+    mse = mean_squared_error(y_test, predicted_y_test)
 
     return rss, r2, mse
 
