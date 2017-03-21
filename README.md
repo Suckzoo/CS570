@@ -4,6 +4,6 @@ Author: Seokju Hong
 
 ## Project 1. Regression
 
-- rigid, lasso regression
+- ridge, lasso regression
 - regularization
 - parameter tuning
