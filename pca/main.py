@@ -43,25 +43,15 @@ def profile_log_likelihood(raw_X):
         eigen_lower = e[L:]
         upper_mean = np.mean(eigen_upper)
         lower_mean = np.mean(eigen_lower)
-        var = 0
-
-        for e in eigen_upper:
-            var += (e - upper_mean) ** 2
-
-        for e in eigen_lower:
-            var += (e - lower_mean) ** 2
-
+        var = sum(map(lambda e: (e - upper_mean) ** 2, eigen_upper)) \
+                + sum(map(lambda e: (e - lower_mean) ** 2, eigen_lower))
         var = var / D
         std = sqrt(var)
         upper_dist = stats.norm(upper_mean, std)
         lower_dist = stats.norm(lower_mean, std)
 
-        score = 0
-        for e in eigen_upper:
-            score += log(upper_dist.pdf(e))
-
-        for e in eigen_lower:
-            score += log(lower_dist.pdf(e))
+        score = sum(map(lambda e: log(upper_dist.pdf(e)), eigen_upper)) \
+                + sum(map(lambda e: log(lower_dist.pdf(e)), eigen_lower))
 
         print("Dimension {0}, score: {1}".format(L, score))
         if not log_profile or log_profile < score:
