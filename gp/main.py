@@ -1,8 +1,9 @@
 import numpy as np
+from numpy import linalg
 import scipy as sp
 import scipy.linalg as splinalg
 import sys
-
+from functools import reduce
 
 class GaussianProcessMultiClassifier:
     def __init__(self, legal_labels, seed, numsamples=1000):
@@ -180,6 +181,9 @@ class GaussianProcessMultiClassifier:
 
         return a, Z # Do not modify this line.
 
+    def calculate_chain_matmul(self, matrices):
+        return reduce(lambda x, y: np.matmul(x, y), matrices)
+
     def calculate_intermediate_values(self, t, a, Kcs):
         """
         You should implement this method:
@@ -197,9 +201,26 @@ class GaussianProcessMultiClassifier:
         K = self.block_diag(Kcs)
         D = np.diag(pi)
         logdet = 0
+        Ecs = []
 
         for C in range(c):
-            pass
+            Dc = np.diag(pi[C*n: (C+1)*n])
+            Ds = splinalg.sqrtm(Dc)
+            Lt = self.calculate_chain_matmul([Ds, Kcs[C], Ds])
+            L = linalg.cholesky(np.identity(n) + Lt)
+            Ec = self.calculate_chain_matmul([Ds, linalg.inv(np.transpose(L)), linalg.inv(L), Ds])
+            Ecs.append(Ec)
+            logdet += np.sum(np.log(np.diag(L)))
+
+        M = linalg.cholesky(reduce(lambda x, y: x+y, Ecs) + (1e-6 * np.identity(n)))
+        E = self.block_diag(Ecs)
+        logdet += np.sum(np.log(np.diag(M)))
+        PI = np.array([np.diag(pi[C*n:(C+1)*n]) for C in range(c)]).reshape((-1, n))
+        R = np.matmul(linalg.inv(D), PI)
+        W = (D - np.matmul(PI, np.transpose(PI)))
+        Cv = np.matmul(W, a) + t - pi
+        Dv = self.calculate_chain_matmul([E, K, Cv])
+        b = Cv - Dv + self.calculate_chain_matmul([E, R, linalg.inv(np.transpose(M)), linalg.inv(M), np.transpose(R), Dv])
         ############
 
         # Do not modify below lines.
@@ -215,7 +236,7 @@ class GaussianProcessMultiClassifier:
         Read pdf file.
         """
         ############
-        pass
+        print(len(datum))
         ############
 
         # Do not modify below lines.
