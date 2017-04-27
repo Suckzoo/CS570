@@ -164,22 +164,25 @@ class GaussianProcessMultiClassifier:
 
         Read pdf file.
         """
-        a = np.array([0] * (n * c))
-        prev_objective = np.zeros((n*c, n*c))
-        objective = np.zeros((n*c, n*c))
-        objective.fill(1e-5)
-        delta_objective = abs(prev_objective - objective)
-        while np.any(delta_objective > 1e-10):
-            prev_objective = objective
+        a = np.zeros((n*c,1))
+        objective = -np.inf
+        for _ in range(10):
             [W, b, logdet, K], _, _ = self.calculate_intermediate_values(t, a, Kcs)
-            a = np.matmul(K, b)
-            a_res_cost = np.sum(np.log(np.sum(np.exp(a).reshape(c, -1), 0)))
-            objective = -0.5 * np.transpose(b).dot(a) + np.transpose(t).dot(a) - a_res_cost
-            delta_objective = abs(prev_objective - objective)
+            a = K.dot(b)
+            a_res_cost = sum(np.log(np.sum(np.exp(a.reshape((c, -1))), axis=0)))
+            new_objective = -0.5 * b.T.dot(a) + t.T.dot(a) - a_res_cost
+            if np.isclose(objective, new_objective, atol=1e-10, rtol=0):
+                break
+            else:
+                objective = new_objective
+            print(objective)
 
         Z = objective - logdet
 
         return a, Z # Do not modify this line.
+
+    def calculate_chain_solve(self, matrices):
+        return reduce(lambda x, y: linalg.solve(y, x), matrices[::-1])
 
     def calculate_chain_matmul(self, matrices):
         return reduce(lambda x, y: x.dot(y), matrices)
@@ -192,35 +195,36 @@ class GaussianProcessMultiClassifier:
         """
         n, d = self.trainingShape
         c = len(self.legalLabels)
-        a_exp = np.exp(a)
-        a_matrix = a_exp.reshape(c, -1)
-        a_denominator = np.sum(a_matrix, 0)
 
         ############
-        pi = np.array([ (a_matrix[C][i] / a_denominator[C]) for C in range(c) for i in range(n) ])
+        a_pi = np.exp(a).reshape((-1, n))
+        pi = (a_pi / np.sum(a_pi, axis=0))
         K = self.block_diag(Kcs)
-        D = np.diag(pi)
         logdet = 0
         Ecs = []
 
         for C in range(c):
-            Dc = np.diag(pi[C*n: (C+1)*n])
-            Ds = splinalg.sqrtm(Dc)
+            Dc = np.diag(pi[C])
+            Ds = np.sqrt(Dc)
             Lt = self.calculate_chain_matmul([Ds, Kcs[C], Ds])
             L = linalg.cholesky(np.identity(n) + Lt)
-            Ec = self.calculate_chain_matmul([Ds, linalg.inv(np.transpose(L)), linalg.inv(L), Ds])
+            Ec = Ds.dot(linalg.solve(L.T, linalg.solve(L, Ds)))
             Ecs.append(Ec)
-            logdet += np.sum(np.log(np.diag(L)))
+            logdet += sum(np.log(np.diag(L)))
 
-        M = linalg.cholesky(reduce(lambda x, y: x+y, Ecs) + (1e-6 * np.identity(n)))
+        D = np.diagflat(pi)
+        M = linalg.cholesky(np.sum(Ecs, axis=0) + (1e-6 * np.identity(n)))
         E = self.block_diag(Ecs)
-        logdet += np.sum(np.log(np.diag(M)))
-        PI = np.array([np.diag(pi[C*n:(C+1)*n]) for C in range(c)]).reshape((-1, n))
+        logdet += sum(np.log(np.diag(M)))
+        PI = np.array([np.diag(pi[C]) for C in range(c)]).reshape((-1, n))
         R = np.matmul(linalg.inv(D), PI)
-        W = (D - np.matmul(PI, np.transpose(PI)))
+        W = (D - np.matmul(PI, PI.T))
+
+        pi = pi.reshape((-1,1))
         Cv = np.matmul(W, a) + t - pi
         Dv = self.calculate_chain_matmul([E, K, Cv])
-        b = Cv - Dv + self.calculate_chain_matmul([E, R, linalg.inv(np.transpose(M)), linalg.inv(M), np.transpose(R), Dv])
+        b = Cv - Dv + self.calculate_chain_matmul([E, R,\
+                self.calculate_chain_solve([M.T, M, R.T.dot(Dv)])])
         ############
 
         # Do not modify below lines.
@@ -236,7 +240,29 @@ class GaussianProcessMultiClassifier:
         Read pdf file.
         """
         ############
-        print(len(datum))
+        n, d = self.trainingShape
+        c = len(self.legalLabels)
+        data = np.concatenate((self.trainingData, np.array([datum])), axis=0)
+        Kcs = self.calculate_covariance(data, self.hyp)
+        test_cov = np.array([Kcs[C][n] for C in range(c)])
+        test_cov_elem = [ cov_vec[n] for cov_vec in test_cov ]
+
+        Rcs = R.reshape((c,n,n))
+        mu = np.ndarray(c)
+        sigma = np.zeros((c,c))
+        tcT = tc.T
+        piT = pi.reshape((c, -1))
+
+        for C in range(c):
+            kv = test_cov[C][:n]
+            mu[C] = (tcT[C] - piT[C]).dot(kv)
+            f = Ecs[C].dot(kv)
+            g = self.calculate_chain_matmul([Ecs[C], Rcs[C], linalg.inv(M.T), linalg.inv(M), Rcs[C].T, f])
+            for Cp in range(c):
+                kvp = test_cov[Cp][:n]
+                sigma[C][Cp] = g.dot(kvp)
+            sigma[C][C] += (test_cov_elem[C] - f.dot(kv))
+
         ############
 
         # Do not modify below lines.
