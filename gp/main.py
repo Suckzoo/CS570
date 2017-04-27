@@ -163,9 +163,20 @@ class GaussianProcessMultiClassifier:
 
         Read pdf file.
         """
-        ############
-        pass
-        ############
+        a = np.array([0] * (n * c))
+        prev_objective = float('inf')
+        objective = float('inf')
+        delta_objective = float('inf')
+        logdet = float('inf')
+        while delta_objective > 1e-10:
+            prev_objective = objective
+            [W, b, logdet, K], _, _ = self.calculate_intermediate_values(t, a, Kcs)
+            a = np.matmul(K, b)
+            a_res_cost = np.sum(np.log(np.sum(np.exp(a).reshape(c, -1), 0)))
+            objective = -0.5 * b.dot(a) + t.dot(a) - a_res_cost
+            delta_objective = abs(prev_objective - objective)
+
+        Z = objective - logdet
 
         return a, Z # Do not modify this line.
 
@@ -177,9 +188,18 @@ class GaussianProcessMultiClassifier:
         """
         n, d = self.trainingShape
         c = len(self.legalLabels)
+        a_exp = np.exp(a)
+        a_matrix = a_exp.reshape(c, -1)
+        a_denominator = np.sum(a_matrix, 0)
 
         ############
-        pass
+        pi = np.array([ (a_matrix[C][i] / a_denominator[C]) for C in range(c) for i in range(n) ])
+        K = self.block_diag(Kcs)
+        D = np.diag(pi)
+        logdet = 0
+
+        for C in range(c):
+            pass
         ############
 
         # Do not modify below lines.
