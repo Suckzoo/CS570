@@ -165,16 +165,16 @@ class GaussianProcessMultiClassifier:
         Read pdf file.
         """
         a = np.array([0] * (n * c))
-        prev_objective = float('inf')
-        objective = float('inf')
-        delta_objective = float('inf')
-        logdet = float('inf')
-        while delta_objective > 1e-10:
+        prev_objective = np.zeros((n*c, n*c))
+        objective = np.zeros((n*c, n*c))
+        objective.fill(1e-5)
+        delta_objective = abs(prev_objective - objective)
+        while np.any(delta_objective > 1e-10):
             prev_objective = objective
             [W, b, logdet, K], _, _ = self.calculate_intermediate_values(t, a, Kcs)
             a = np.matmul(K, b)
             a_res_cost = np.sum(np.log(np.sum(np.exp(a).reshape(c, -1), 0)))
-            objective = -0.5 * b.dot(a) + t.dot(a) - a_res_cost
+            objective = -0.5 * np.transpose(b).dot(a) + np.transpose(t).dot(a) - a_res_cost
             delta_objective = abs(prev_objective - objective)
 
         Z = objective - logdet
@@ -182,7 +182,7 @@ class GaussianProcessMultiClassifier:
         return a, Z # Do not modify this line.
 
     def calculate_chain_matmul(self, matrices):
-        return reduce(lambda x, y: np.matmul(x, y), matrices)
+        return reduce(lambda x, y: x.dot(y), matrices)
 
     def calculate_intermediate_values(self, t, a, Kcs):
         """
