@@ -1,12 +1,12 @@
-# import matplotlib
-# matplotlib.use('Agg')
-# import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as linalg
-# import elice_utils
+import elice_utils
 import math
 
-ELICE = False
+ELICE = True
 FILE_PREFIX = ''
 
 def read_data(filename):
@@ -72,7 +72,7 @@ def kmeans(X, theta):
                 if norm_core < dist:
                     cluster_core = core_index
                     dist = norm_core
-                
+
             cluster[cluster_core] += sample
             cluster_size[cluster_core] += 1
         mu = np.array([cluster[k] / cluster_size[k] for k in range(K)])
@@ -82,9 +82,7 @@ def expected_complete_LL(X, R, K, theta):
     mu, sigma, pi = theta
     N = len(X)
     K = len(mu)
-    llR = np.array([[R[i][k] * (math.log(pi[k]) + math.log(gaussian(mu[k], sigma[k], X[i]))) for k in range(K)] for i in range(N)])
-    
-    ll = np.sum(llR)
+    ll = np.sum(np.log(np.sum(R, axis=1)))
     return ll
 
 def expect(X, theta):
@@ -104,29 +102,21 @@ def expect(X, theta):
 def maximize(X, R, K):
     N, _ = X.shape
     Rsum = np.sum(R, axis=0)
-    pi = Rsum / N
-    
-    # X_exp = np.array([[X[i] * R[i][k] for k in range(K)] for i in range(N)])
-    # cluster_exp = np.sum(X_exp, axis = 0)
-    # mu = np.array([cluster_exp[i] / Rsum[i] for i in range(K)])
-    
-    # X_cov = np.array([[Xr.dot(Xr.T) * R[i][k] for k in range(K)] for i, Xr in enumerate(map(lambda x: x.reshape((-1,1)), X))])
-    # cluster_cov = np.sum(X_cov, axis = 0)
-    # sigma = np.array([(cluster_cov[i] / Rsum[i]) - muR.dot(muR.T) for i, muR in enumerate(map(lambda x: x.reshape((-1,1)), mu))])
-    mu = np.zeros((K, 2))
-    sigma = np.zeros((K, 2, 2))
+    mu = []
+    sigma = []
+    pi = []
     for k in range(K):
-        for i in range(N):
-            mu[k] += R[i][k] * X[i]
-        mu[k] /= Rsum[k]
-        
-        for i in range(N):
-            Xr = (X[i] - mu[k]).reshape((-1,1))
-            sigma[k] += R[i][k] * Xr.dot(Xr.T)
-        
-        sigma[k] /= Rsum[k]
-    
-    return (np.array(mu), np.array(sigma), np.array(pi))
+        mu_k = 1. / Rsum[k] * np.sum(R[:, k] * X.T, axis=1).T
+        x_mu = np.matrix(X - mu_k)
+        mu.append(mu_k)
+        sigma_k = np.array(1 / Rsum[k] * np.dot(np.multiply(x_mu.T, R[:, k]), x_mu))
+        sigma.append(sigma_k)
+        pi.append(1. / N * Rsum[k])
+
+    mu = np.array(mu)
+    sigma = np.array(sigma)
+    pi = np.array(pi)
+    return (mu, sigma, pi)
 
 def EM(X, K, init_theta):
     LL = float('inf')
@@ -135,14 +125,13 @@ def EM(X, K, init_theta):
     while True:
         R = expect(X, theta)
         cost = expected_complete_LL(X, R, K, theta)
+        theta = maximize(X, R, K)
         # convergence check
         if abs(LL - cost) < 0.1:
             break
         # cost update
         LL = cost
-        theta = maximize(X, R, K)
-    mu, sigma, _ = theta
-    return (LL, (mu, sigma), R)
+    return LL
 
 def find_best_k(X):
     best_LL = None
@@ -153,11 +142,14 @@ def find_best_k(X):
     for K in range(2, 8):
         init_theta = get_initial_random_state(X, K)
         init_theta = kmeans(X, init_theta)
-        LL, theta, R = EM(X, K, init_theta)
+        LL = EM(X, K, init_theta)
         print('K={0} -> {1}'.format(K, LL))
         if not best_LL or best_LL < LL:
-            best_K, best_LL, best_theta, best_R = K, LL, theta, R
-
+            best_K = K
+            best_LL = LL
+            best_theta = init_theta
+            best_R = expect(X, init_theta)
+    
     return best_K, best_theta, best_LL, best_R
 
 def draw_dataset(X, R):
