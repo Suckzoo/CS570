@@ -9,6 +9,9 @@ import math
 ELICE = True
 FILE_PREFIX = ''
 
+g_theta = None
+g_R = None
+
 def read_data(filename):
     X = []
     # Read the dataset here...
@@ -60,6 +63,7 @@ def kmeans(X, theta):
     mu, sigma, pi = theta
     N = len(X)
     K = len(mu)
+    print(mu)
     for i in range(10):
         cluster = np.zeros((K,2))
         cluster_size = [0] * K
@@ -76,13 +80,15 @@ def kmeans(X, theta):
             cluster[cluster_core] += sample
             cluster_size[cluster_core] += 1
         mu = np.array([cluster[k] / cluster_size[k] for k in range(K)])
+    print(mu)
     return (mu, sigma, pi)
 
 def expected_complete_LL(X, R, K, theta):
     mu, sigma, pi = theta
     N = len(X)
     K = len(mu)
-    ll = np.sum(np.log(np.sum(R, axis=1)))
+    llR = np.array([[R[i][k] * (math.log(pi[k] * gaussian(mu[k], sigma[k], X[i]))) for k in range(K)] for i in range(N)])
+    ll = np.sum(llR)
     return ll
 
 def expect(X, theta):
@@ -109,7 +115,7 @@ def maximize(X, R, K):
         mu_k = 1. / Rsum[k] * np.sum(R[:, k] * X.T, axis=1).T
         x_mu = np.matrix(X - mu_k)
         mu.append(mu_k)
-        sigma_k = np.array(1 / Rsum[k] * np.dot(np.multiply(x_mu.T, R[:, k]), x_mu))
+        sigma_k = np.array(1. / Rsum[k] * np.dot(np.multiply(x_mu.T, R[:, k]), x_mu))
         sigma.append(sigma_k)
         pi.append(1. / N * Rsum[k])
 
@@ -119,21 +125,32 @@ def maximize(X, R, K):
     return (mu, sigma, pi)
 
 def EM(X, K, init_theta):
-    LL = float('inf')
+    global g_R
+    global g_theta
+    
+    LL = -float('inf')
     theta = init_theta
 
     while True:
         R = expect(X, theta)
-        cost = expected_complete_LL(X, R, K, theta)
         theta = maximize(X, R, K)
+        
+        g_R = R
+        g_theta = theta
+        
+        cost = expected_complete_LL(X, R, K, theta)
         # convergence check
-        if abs(LL - cost) < 0.1:
+        if abs(LL - cost) <= 0.1:
+            LL = cost
             break
         # cost update
         LL = cost
     return LL
 
 def find_best_k(X):
+    global g_R
+    global g_theta
+    
     best_LL = None
     best_theta = None
     best_K = None
@@ -143,12 +160,11 @@ def find_best_k(X):
         init_theta = get_initial_random_state(X, K)
         init_theta = kmeans(X, init_theta)
         LL = EM(X, K, init_theta)
-        print('K={0} -> {1}'.format(K, LL))
         if not best_LL or best_LL < LL:
             best_K = K
             best_LL = LL
-            best_theta = init_theta
-            best_R = expect(X, init_theta)
+            best_theta = g_theta
+            best_R = g_R
     
     return best_K, best_theta, best_LL, best_R
 
